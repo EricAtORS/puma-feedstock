@@ -22,12 +22,6 @@ requirements:
     - {{ compiler('c') }}
     - {{ stdlib("c") }}
     - {{ compiler('cxx') }}
-    - {{ cdt('mesa-libgl-devel') }}  # [linux]
-    - {{ cdt('mesa-dri-drivers') }}  # [linux]
-    - {{ cdt('libselinux') }}  # [linux]
-    - {{ cdt('libxdamage') }}  # [linux]
-    - {{ cdt('libxxf86vm') }}  # [linux]
-    - {{ cdt('libxext') }}     # [linux]
     - libgomp  # [linux]
     - llvm-openmp  # [osx]
     - cmake  # [not win]
@@ -35,6 +29,7 @@ requirements:
     - swig  # [not win]
   host:
     - xorg-libxfixes  # [linux]
+    - libgl-devel  # [linux]
     - python
     - cython
     - pip
