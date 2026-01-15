@@ -10,7 +10,6 @@ source:
   sha256: 25308c057b36a7d394a58f3b16ede621ba739b5c504e51c069edc913f086ad7d
 
 build:
-  skip: true  # [py==38]
   number: 3
 
 requirements:
@@ -41,7 +40,6 @@ requirements:
     - qt-main  # [not win]
   run:
     - python
-    - {{ pin_compatible('numpy') }}
     - scipy =1.11
     - scikit-image >=0.17
     - matplotlib-base
