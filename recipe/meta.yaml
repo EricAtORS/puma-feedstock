@@ -1,8 +1,9 @@
 {% set name = "puma" %}
 {% set version = "3.2.2" %}
+{% set build = 4 %}
 
 package:
-  name: {{ name|lower }}
+  name: {{ name|lower }}-split
   version: {{ version }}
 
 source:
@@ -18,7 +19,7 @@ source:
     - patches/cxx17-standard.patch
 
 build:
-  number: 4
+  number: {{ build + 100 * (microarch_level|default(1)|int - 1) }}
 
 requirements:
   build:
@@ -26,6 +27,7 @@ requirements:
     - cross-python_{{ target_platform }}     # [build_platform != target_platform]
     - cython                                 # [build_platform != target_platform]
     - numpy                                  # [build_platform != target_platform]
+    - x86_64-microarch-level =={{ microarch_level }}  # [unix and x86_64]
     - {{ compiler('c') }}
     - {{ stdlib("c") }}
     - {{ compiler('cxx') }}
@@ -45,23 +47,93 @@ requirements:
     - eigen  # [not win]
     - fftw  # [not win]
     - libtiff  # [not win]
-    - qt-main  # [not win]
-  run:
-    - python
-    - scipy >=1.11,<2
-    - scikit-image >=0.17
-    - matplotlib-base
-    - pyvista >=0.46.5
-    - vtk
-    - scikit-umfpack  # [not win]
-    - ocl-icd-system  # [linux]
+    - qt-main  # [not win and qt_major == 5]
+    - qt6-main  # [not win and qt_major == 6]
+    - qt6-3d  # [not win and qt_major == 6]
 
-test:
-  imports:
-    - TexGen.Core  # [not win]
-    - pumapy
-  source_files:
-    - python/test/*.py
+outputs:
+  - name: puma
+    # qt-main is in the shared host environment so that the GUI can be
+    # compiled. Only puma-gui links against it, so the library and the python
+    # package keep Qt out of their run requirements.
+    build:
+      ignore_run_exports:
+        - qt-main  # [qt_major == 5]
+        - qt6-main  # [qt_major == 6]
+        - qt6-3d  # [qt_major == 6]
+    files:
+      - bin/pumaX_testing
+      - include/puma.h
+      - lib/libPuMA*
+      - lib/libTexGenCore*
+      - share/TexGen
+      # A path holding a wildcard matches the directory itself rather than what
+      # is under it, so the python packages are listed with a recursive glob.
+      - lib/python*/site-packages/TexGen/**
+      - lib/python*/site-packages/pumapy/**
+      - lib/python*/site-packages/pumapy-*/**
+      - Lib/site-packages/pumapy/**        # [win]
+      - Lib/site-packages/pumapy-*/**      # [win]
+    # The build tools stay in the top-level requirements, which is where the
+    # shared build script runs. python is named here so that the output is
+    # tagged with the python version its extension modules were built for.
+    requirements:
+      host:
+        - python
+        - numpy
+        - fftw  # [not win]
+        - libtiff  # [not win]
+      run:
+        - python
+        - scipy >=1.11,<2
+        - scikit-image >=0.17
+        - matplotlib-base
+        - pyvista >=0.46.5
+        - vtk
+        - scikit-umfpack  # [not win]
+        - ocl-icd-system  # [linux]
+    test:
+      imports:
+        - TexGen.Core  # [not win]
+        - pumapy
+      source_files:
+        - python/test/*.py
+      commands:
+        - pumaX_testing 1  # [not win]
+        - cd python/test && python -m unittest test_workspace.TestWorkspace
+    about:
+      license: NASA-1.3
+      license_file:
+        - LICENSE.txt
+        - install/TexGen/LICENSE.txt
+      summary: PuMA library and the pumapy python package.
+
+  - name: puma-gui  # [not win]
+    files:
+      - bin/pumaGUI
+    requirements:
+      run:
+        - {{ pin_subpackage('puma', exact=True) }}
+        - qt-main  # [qt_major == 5]
+        - qt6-main  # [qt_major == 6]
+        - qt6-3d  # [qt_major == 6]
+    test:
+      requires:
+        - coreutils
+      commands:
+        # The test environment is headless, so Qt's default xcb plugin has no
+        # display to connect to; offscreen is conda-forge's documented
+        # substitute. pumaGUI ends in QApplication::exec() and never returns on
+        # its own, so timeout stops it and --preserve-status reports the
+        # resulting SIGTERM as 143.
+        - QT_QPA_PLATFORM=offscreen timeout --preserve-status 10 pumaGUI || [[ $? -eq 143 ]]
+    about:
+      # The GUI plots through the vendored QCustomPlot, which is GPL-3.0.
+      license: NASA-1.3 AND GPL-3.0-or-later
+      license_file:
+        - LICENSE.txt
+        - gui/src/Utilities/qcustomplot/GPL.txt
+      summary: Desktop GUI for PuMA.
 
 about:
   home: https://github.com/nasa/puma
