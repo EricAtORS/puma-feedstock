@@ -17,6 +17,9 @@ source:
     # PuMA asks for --std=c++0x, which is C++11. Eigen 3.4 needs C++14 and
     # Eigen 5 needs C++17, so the library is compiled at C++17 instead.
     - patches/cxx17-standard.patch
+    # PuMA's C++ has never been built on Windows: the CMake project has no MSVC
+    # branch, and a handful of headers reach for POSIX-only declarations.
+    - patches/windows-port.patch
 
 build:
   number: {{ build + 100 * (microarch_level|default(1)|int - 1) }}
@@ -33,8 +36,9 @@ requirements:
     - {{ compiler('cxx') }}
     - libgomp  # [linux]
     - llvm-openmp  # [osx]
-    - cmake <4  # [not win]
+    - cmake <4
     - make  # [not win]
+    - ninja  # [win]
     - swig  # [not win]
   host:
     - xorg-libxfixes  # [linux]
@@ -44,9 +48,9 @@ requirements:
     - pip
     - setuptools
     - numpy
-    - eigen  # [not win]
-    - fftw  # [not win]
-    - libtiff  # [not win]
+    - eigen
+    - fftw
+    - libtiff
     - qt-main  # [not win and qt_major == 5]
     - qt6-main  # [not win and qt_major == 6]
     - qt6-3d  # [not win and qt_major == 6]
@@ -63,8 +67,11 @@ outputs:
         - qt6-3d  # [qt_major == 6]
     files:
       - bin/pumaX_testing
+      - bin/pumaX_testing.exe          # [win]
+      - bin/PuMA.dll                   # [win]
       - include/puma.h
       - lib/libPuMA*
+      - lib/PuMA.lib                   # [win]
       - lib/libTexGenCore*
       - share/TexGen
       # A path holding a wildcard matches the directory itself rather than what
@@ -81,8 +88,8 @@ outputs:
       host:
         - python
         - numpy
-        - fftw  # [not win]
-        - libtiff  # [not win]
+        - fftw
+        - libtiff
       run:
         - python
         - scipy >=1.11,<2
@@ -99,7 +106,7 @@ outputs:
       source_files:
         - python/test/*.py
       commands:
-        - pumaX_testing 1  # [not win]
+        - pumaX_testing 1
         - cd python/test && python -m unittest test_workspace.TestWorkspace
     about:
       license: NASA-1.3
@@ -109,31 +116,31 @@ outputs:
       summary: PuMA library and the pumapy python package.
 
   - name: puma-gui  # [not win]
-    files:
-      - bin/pumaGUI
-    requirements:
-      run:
-        - {{ pin_subpackage('puma', exact=True) }}
-        - qt-main  # [qt_major == 5]
-        - qt6-main  # [qt_major == 6]
-        - qt6-3d  # [qt_major == 6]
-    test:
-      requires:
-        - coreutils
-      commands:
+    files:  # [not win]
+      - bin/pumaGUI  # [not win]
+    requirements:  # [not win]
+      run:  # [not win]
+        - {{ pin_subpackage('puma', exact=True) }}  # [not win]
+        - qt-main  # [not win and qt_major == 5]
+        - qt6-main  # [not win and qt_major == 6]
+        - qt6-3d  # [not win and qt_major == 6]
+    test:  # [not win]
+      requires:  # [not win]
+        - coreutils  # [not win]
+      commands:  # [not win]
         # The test environment is headless, so Qt's default xcb plugin has no
         # display to connect to; offscreen is conda-forge's documented
         # substitute. pumaGUI ends in QApplication::exec() and never returns on
         # its own, so timeout stops it and --preserve-status reports the
         # resulting SIGTERM as 143.
-        - QT_QPA_PLATFORM=offscreen timeout --preserve-status 10 pumaGUI || [[ $? -eq 143 ]]
-    about:
+        - QT_QPA_PLATFORM=offscreen timeout --preserve-status 10 pumaGUI || test $? -eq 143  # [not win]
+    about:  # [not win]
       # The GUI plots through the vendored QCustomPlot, which is GPL-3.0.
-      license: NASA-1.3 AND GPL-3.0-or-later
-      license_file:
-        - LICENSE.txt
-        - gui/src/Utilities/qcustomplot/GPL.txt
-      summary: Desktop GUI for PuMA.
+      license: NASA-1.3 AND GPL-3.0-or-later  # [not win]
+      license_file:  # [not win]
+        - LICENSE.txt  # [not win]
+        - gui/src/Utilities/qcustomplot/GPL.txt  # [not win]
+      summary: Desktop GUI for PuMA.  # [not win]
 
 about:
   home: https://github.com/nasa/puma

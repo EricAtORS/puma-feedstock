@@ -1,0 +1,600 @@
+diff --git a/cpp/CMakeLists.txt b/cpp/CMakeLists.txt
+index 60bd142..a29d27e 100644
+--- a/cpp/CMakeLists.txt
++++ b/cpp/CMakeLists.txt
+@@ -21,6 +21,18 @@ if(APPLE)
+ elseif(UNIX)
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp -Wno-register")
+     add_definitions(-DLINUX) # preprocessor directive
++elseif(MSVC)
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /openmp /EHsc /bigobj")
++    add_definitions(-DWINDOWS) # preprocessor directive
++    # The POSIX spellings of read/write/open live in <io.h> behind these, and
++    # the sources call the CRT string functions without the _s suffix.
++    add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS)
++    # The MSVC <cmath> declares M_PI only under this, and the sources that use
++    # it reach the math header transitively, so it has to be set for the target.
++    add_definitions(-D_USE_MATH_DEFINES)
++    # No symbol carries __declspec(dllexport), so the import library would
++    # otherwise come out empty.
++    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+ endif()
+ 
+ # include directories
+@@ -38,6 +50,13 @@ HEADER_DIRECTORIES(HEADERS_DIRS)
+ include_directories(${HEADERS_DIRS})
+ include_directories(${CONDA_PREFIX}/include)
+ include_directories(${CONDA_PREFIX}/include/eigen3/Eigen)
++if(MSVC)
++    # A conda prefix on Windows keeps its headers and import libraries under
++    # Library, and the sources reach Eigen by its module names, so the Eigen
++    # directory itself has to be on the include path.
++    include_directories(${CONDA_PREFIX}/Library/include)
++    include_directories(${CONDA_PREFIX}/Library/include/eigen3/Eigen)
++endif()
+ 
+ #########################
+ # Creating PuMA library #
+@@ -50,9 +69,17 @@ add_library(PuMA SHARED ${SOURCES})
+ set_target_properties(PuMA PROPERTIES PUBLIC_HEADER "${HEADERS}")
+ 
+ # Dependencies
+-SET(DEP_LIBS "-ldl -L${CONDA_PREFIX}/lib -ltiff -lfftw3_threads -lfftw3")
+-if(APPLE)
+-    SET(DEP_LIBS "${DEP_LIBS} -lomp")
++if(MSVC)
++    # -l/-L/-ldl are GNU driver flags. conda-forge's win-64 fftw also builds
++    # threading into the main library, so there is no fftw3_threads to link.
++    find_library(PUMA_TIFF_LIB NAMES tiff libtiff HINTS ${CONDA_PREFIX}/lib ${CONDA_PREFIX}/Library/lib REQUIRED)
++    find_library(PUMA_FFTW3_LIB NAMES fftw3 libfftw3 fftw3-3 libfftw3-3 HINTS ${CONDA_PREFIX}/lib ${CONDA_PREFIX}/Library/lib REQUIRED)
++    SET(DEP_LIBS ${PUMA_TIFF_LIB} ${PUMA_FFTW3_LIB})
++else()
++    SET(DEP_LIBS "-ldl -L${CONDA_PREFIX}/lib -ltiff -lfftw3_threads -lfftw3")
++    if(APPLE)
++        SET(DEP_LIBS "${DEP_LIBS} -lomp")
++    endif()
+ endif()
+ 
+ # link dependency libraries to PuMA library
+@@ -61,6 +88,8 @@ target_link_libraries(PuMA ${DEP_LIBS})
+ # Install PuMA library
+ install(TARGETS PuMA
+         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
++        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
++        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+ 
+ ############################
+diff --git a/cpp/src/export/STL/err.h b/cpp/src/export/STL/err.h
+index 014be6f..1e1cdc4 100644
+--- a/cpp/src/export/STL/err.h
++++ b/cpp/src/export/STL/err.h
+@@ -5,6 +5,11 @@
+ 
+ #include <cstdlib>
+ 
++#ifdef _MSC_VER
++// MSVC spells the decorated function name __FUNCSIG__.
++#define __PRETTY_FUNCTION__ __FUNCSIG__
++#endif
++
+ 
+ #ifndef PERROR
+ # define PERROR(m) {							\
+diff --git a/cpp/src/export/STL/fio.h b/cpp/src/export/STL/fio.h
+index 00865b1..ce86e71 100644
+--- a/cpp/src/export/STL/fio.h
++++ b/cpp/src/export/STL/fio.h
+@@ -5,11 +5,31 @@
+ #include "err.h"
+ 
+ #include <vector>
+-#include <unistd.h>   // for read/write
+ #include <sys/stat.h> // for stat()
+ #include <fcntl.h>    // for open()
++#ifdef _MSC_VER
++#include <io.h>       // for read/write
++#else
++#include <unistd.h>   // for read/write
+ #include <regex.h>    // for regexp
+ #include <dirent.h>   // for readdir
++#endif
++
++#ifdef _MSC_VER
++// The MSVC CRT has no positional read or write, and _read and _write both
++// advance the shared file offset, so the offset is set before each call.
++inline ssize_t pread(int fd, void* buf, size_t count, off_t offset)
++{
++  if( _lseeki64(fd,offset,SEEK_SET) != offset ) return -1;
++  return _read(fd,buf,(unsigned int)count);
++}
++
++inline ssize_t pwrite(int fd, const void* buf, size_t count, off_t offset)
++{
++  if( _lseeki64(fd,offset,SEEK_SET) != offset ) return -1;
++  return _write(fd,buf,(unsigned int)count);
++}
++#endif
+ 
+ 
+ namespace fio {
+@@ -245,6 +265,8 @@ namespace fio {
+     return statbuf.st_mode & S_IFDIR;
+   }
+ 
++  // POSIX regex and dirent have no MSVC equivalent, and nothing calls this.
++#ifndef _MSC_VER
+   inline void getfiles(std::string dir, std::string pat, std::vector<std::string>& fnames)
+   {
+     struct stat sbuf;
+@@ -281,6 +303,7 @@ namespace fio {
+     }
+     closedir(dirobj);
+   }
++#endif
+ 
+ 
+ }
+diff --git a/cpp/src/export/STL/ostr.h b/cpp/src/export/STL/ostr.h
+index 731f951..835cb03 100644
+--- a/cpp/src/export/STL/ostr.h
++++ b/cpp/src/export/STL/ostr.h
+@@ -10,11 +10,25 @@
+ #include <set>
+ #include <deque>
+ #include <cmath>
+-#include <sys/types.h>
+ #include <cstdio> // for perror
+ #include <cerrno>
+-#include <unistd.h>
+ #include <fcntl.h>
++#ifdef _MSC_VER
++// The MSVC CRT spells these differently, and <io.h> carries the POSIX names
++// for read/write/open behind _CRT_NONSTDC_NO_DEPRECATE.
++#include <cstdint>
++#include <io.h>
++typedef std::uint16_t u_int16_t;
++typedef std::uint32_t u_int32_t;
++typedef std::uint64_t u_int64_t;
++#ifndef _SSIZE_T_DEFINED
++#define _SSIZE_T_DEFINED
++typedef std::intptr_t ssize_t;
++#endif
++#else
++#include <sys/types.h>
++#include <unistd.h>
++#endif
+ 
+ 
+ namespace std {
+@@ -31,6 +45,8 @@ namespace Glx {
+   inline float r2d(float r) {return r*57.29577951308232087679815481411f;}
+   inline float d2r(float d) {return d*0.01745329251994329576923690768f;}
+ 
++  // Reads /proc/self/cmdline, which only exists on Linux, and nothing calls it.
++#ifdef LINUX
+   inline std::string argvstr(void)
+   {
+     const int maxcmdline=8192;
+@@ -68,6 +84,7 @@ namespace Glx {
+     close(fd);
+     return std::string(&dst[0]);
+   }
++#endif
+ 
+ }
+ 
+diff --git a/cpp/src/export/STL/swapit.h b/cpp/src/export/STL/swapit.h
+index 81fe51f..87d3da2 100644
+--- a/cpp/src/export/STL/swapit.h
++++ b/cpp/src/export/STL/swapit.h
+@@ -1,8 +1,22 @@
+ #ifndef _SWAPIT_H_
+ #define _SWAPIT_H_
+ 
++#ifdef _MSC_VER
++// The MSVC CRT spells these differently, and <io.h> carries the POSIX names
++// for read/write/open behind _CRT_NONSTDC_NO_DEPRECATE.
++#include <cstdint>
++#include <io.h>
++typedef std::uint16_t u_int16_t;
++typedef std::uint32_t u_int32_t;
++typedef std::uint64_t u_int64_t;
++#ifndef _SSIZE_T_DEFINED
++#define _SSIZE_T_DEFINED
++typedef std::intptr_t ssize_t;
++#endif
++#else
+ #include <sys/types.h> // u_int32_t, etc
+ #include <unistd.h>    // read()
++#endif
+ #include <stdexcept>   // std::runtime_error
+ #include <cstring>    // memcpy()
+ #include <vector>
+diff --git a/cpp/src/export/binary/export_bin.cpp b/cpp/src/export/binary/export_bin.cpp
+index fa62edf..793cc8b 100644
+--- a/cpp/src/export/binary/export_bin.cpp
++++ b/cpp/src/export/binary/export_bin.cpp
+@@ -74,10 +74,8 @@ template<class T> bool Export_bin<T>::execute() {
+ template<class T> bool Export_bin<T>::exportHelper() {
+ 
+     FILE *file;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, (fileName+".puma").c_str());
+-    file = fopen(fileName_char_array,"w");
++    std::string outputFileName = fileName + ".puma";
++    file = fopen(outputFileName.c_str(),"w");
+ 
+     if (file != NULL) {
+         for (long k=0; k<matrix->Z(); k++) {
+@@ -181,10 +179,8 @@ bool Export_bin_MatrixVec3::execute() {
+ bool Export_bin_MatrixVec3::exportHelper() {
+ 
+     FILE *file;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, (fileName+".puma").c_str());
+-    file = fopen(fileName_char_array,"w");
++    std::string outputFileName = fileName + ".puma";
++    file = fopen(outputFileName.c_str(),"w");
+ 
+     if (file != NULL) {
+         for (long k=0; k<matrix->Z(); k++) {
+diff --git a/cpp/src/export/vtk/export_vtk.cpp b/cpp/src/export/vtk/export_vtk.cpp
+index b675e1b..93d2c79 100644
+--- a/cpp/src/export/vtk/export_vtk.cpp
++++ b/cpp/src/export/vtk/export_vtk.cpp
+@@ -91,10 +91,7 @@ template<class T> bool Export_vtk_Matrix<T>::exportHelper() {
+ 
+     char s[256];
+     FILE *file;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, (fileName).c_str());
+-    file = fopen(fileName_char_array,"w");
++    file = fopen(fileName.c_str(),"w");
+     if (file != nullptr) {
+         strcpy(s, "# vtk DataFile Version 3.0\n"); fwrite(s, sizeof(char), strlen(s), file);
+         strcpy(s, "VTK from PuMA\n"); fwrite(s, sizeof(char), strlen(s), file);
+@@ -290,10 +287,7 @@ bool Export_vtk_MatVec3::exportHelper() {
+ 
+     char s[256];
+     FILE *file;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, (fileName).c_str());
+-    file = fopen(fileName_char_array,"w");
++    file = fopen(fileName.c_str(),"w");
+     if (file != nullptr) {
+         strcpy(s, "# vtk DataFile Version 3.0\n"); fwrite(s, sizeof(char), strlen(s), file);
+         strcpy(s, "VTK from PuMA\n"); fwrite(s, sizeof(char), strlen(s), file);
+@@ -495,10 +489,7 @@ bool Export_vtk_Workspace::exportHelper() {
+ 
+     char s[256];
+     FILE *file;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, (fileName).c_str());
+-    file = fopen(fileName_char_array,"w");
++    file = fopen(fileName.c_str(),"w");
+     if (file != nullptr) {
+         strcpy(s, "# vtk DataFile Version 3.0\n"); fwrite(s, sizeof(char), strlen(s), file);
+         strcpy(s, "VTK from PuMA\n"); fwrite(s, sizeof(char), strlen(s), file);
+diff --git a/cpp/src/filter/median/medianfilter3d.cpp b/cpp/src/filter/median/medianfilter3d.cpp
+index 9278053..cb7c4dd 100644
+--- a/cpp/src/filter/median/medianfilter3d.cpp
++++ b/cpp/src/filter/median/medianfilter3d.cpp
+@@ -185,7 +185,7 @@ short MedianFilter3D::medianValue(long x, long y, long z) {
+     int zSize = zEnd - zStart + 1;
+ 
+     // creating an array that will store all of the values in the window
+-    short totalValues[xSize * ySize * zSize];
++    std::vector<short> totalValues(xSize * ySize * zSize);
+ 
+     //iterating through the window and adding all the elements into the totalValues
+     for( long i=xStart; i<=xEnd; i++ ) {
+@@ -197,7 +197,7 @@ short MedianFilter3D::medianValue(long x, long y, long z) {
+     }
+ 
+     //computing the median value of the window elements
+-    short median = getMedian(totalValues, xSize*ySize*zSize);
++    short median = getMedian(totalValues.data(), xSize*ySize*zSize);
+ 
+     return median;
+ }
+diff --git a/cpp/src/generation/randomfibers/randomfibers.cpp b/cpp/src/generation/randomfibers/randomfibers.cpp
+index db52fd4..7d3a292 100644
+--- a/cpp/src/generation/randomfibers/randomfibers.cpp
++++ b/cpp/src/generation/randomfibers/randomfibers.cpp
+@@ -267,22 +267,22 @@ bool Generate_RandomFibers::bindFibers() {
+                 } else {
+ 
+                     bool boundary = false;
+-                    if(i2>0 and work->at(i2-1,j2,k2) <=1){
++                    if(i2>0 && work->at(i2-1,j2,k2) <=1){
+                         boundary = true;
+                     }
+-                    else if( j2>0 and work->at(i2,j2-1,k2) <=1 ) {
++                    else if( j2>0 && work->at(i2,j2-1,k2) <=1 ) {
+                         boundary = true;
+                     }
+-                    else if( k2>0 and work->at(i2,j2,k2-1) <=1 ) {
++                    else if( k2>0 && work->at(i2,j2,k2-1) <=1 ) {
+                         boundary = true;
+                     }
+-                    else if(i2<input.xSize-1 and work->at(i2+1,j2,k2) <=1){
++                    else if(i2<input.xSize-1 && work->at(i2+1,j2,k2) <=1){
+                         boundary = true;
+                     }
+-                    else if(j2<input.ySize-1 and work->at(i2,j2+1,k2) <=1){
++                    else if(j2<input.ySize-1 && work->at(i2,j2+1,k2) <=1){
+                         boundary = true;
+                     }
+-                    else if(k2<input.zSize-1 and work->at(i2,j2,k2+1) <=1){
++                    else if(k2<input.zSize-1 && work->at(i2,j2,k2+1) <=1){
+                         boundary = true;
+                     }
+ 
+diff --git a/cpp/src/import/3D_Tiff/import_3DTiff.cpp b/cpp/src/import/3D_Tiff/import_3DTiff.cpp
+index abb4990..f4c7340 100644
+--- a/cpp/src/import/3D_Tiff/import_3DTiff.cpp
++++ b/cpp/src/import/3D_Tiff/import_3DTiff.cpp
+@@ -1,5 +1,12 @@
+ #include "import_3DTiff.h"
+ 
++#ifdef _MSC_VER
++// The MSVC CRT spells the pipe helpers with a leading underscore, and
++// _CRT_NONSTDC_NO_DEPRECATE does not alias these two.
++#define popen _popen
++#define pclose _pclose
++#endif
++
+ 
+ bool puma::import_3DTiff(Workspace *work, std::string fileName, int numThreads) {
+     Import_3DTiff_Workspace importer(work,std::move(fileName),numThreads);
+@@ -31,9 +38,9 @@ std::string exec(const char* cmd) {
+ 
+ std::string puma::path_to_example_file(std::string example_filename){
+ 
+-    std::string command = "python -c 'import pumapy; print(pumapy.path_to_example_file(\"";
++    std::string command = "python -c \"import pumapy; print(pumapy.path_to_example_file('";
+     command += example_filename;
+-    command += "\"))'";
++    command += "'))\"";
+ 
+     std::string out = exec(command.c_str());
+ 
+diff --git a/cpp/src/import/binary/import_bin.cpp b/cpp/src/import/binary/import_bin.cpp
+index 4c52bf7..dab998a 100644
+--- a/cpp/src/import/binary/import_bin.cpp
++++ b/cpp/src/import/binary/import_bin.cpp
+@@ -73,10 +73,7 @@ template<class T> bool Import_bin<T>::import() {
+ template<class T> bool Import_bin<T>::importHelper() {
+ 
+     FILE *pfile;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, fileName.c_str());
+-    pfile = fopen(fileName_char_array,"rb");
++    pfile = fopen(fileName.c_str(),"rb");
+ 
+     if (pfile!=nullptr) {
+ 
+@@ -198,10 +195,7 @@ bool Import_bin_MatrixVec3::import() {
+ bool Import_bin_MatrixVec3::importHelper() {
+ 
+     FILE *pfile;
+-    int n = fileName.length();
+-    char fileName_char_array[n + 1];
+-    strcpy(fileName_char_array, fileName.c_str());
+-    pfile = fopen(fileName_char_array,"rb");
++    pfile = fopen(fileName.c_str(),"rb");
+ 
+     if (pfile!=nullptr) {
+ 
+diff --git a/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.cpp b/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.cpp
+index 8be140c..f7ce139 100644
+--- a/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.cpp
++++ b/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.cpp
+@@ -412,14 +412,14 @@ puma::Vec3<double> ArtificialFlux_AMatrix::computeFluxes(puma::Matrix<double> *x
+ 
+     puma::Vec3<double> fluxes(0,0,0);
+ 
+-#ifdef MAC
+-    fluxes.x = accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
+-    fluxes.y = accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
+-    fluxes.z = accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
+-#elif LINUX
++#ifdef LINUX
+     fluxes.x = __gnu_parallel::accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
+     fluxes.y = __gnu_parallel::accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
+     fluxes.z = __gnu_parallel::accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
++#else
++    fluxes.x = std::accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
++    fluxes.y = std::accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
++    fluxes.z = std::accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
+ #endif
+ 
+     return fluxes;
+diff --git a/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.h b/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.h
+index 6e9ce11..39f0ac9 100644
+--- a/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.h
++++ b/cpp/src/materialproperties/orientation/artificialflux/artificialflux_AMatrix.h
+@@ -5,10 +5,10 @@
+ #include "fv_boundarycondition.h"
+ #include "AMatrix.h"
+ 
+-#ifdef MAC
+-#include <numeric>
+-#elif LINUX
++#ifdef LINUX
+ #include <parallel/numeric>
++#else
++#include <numeric>
+ #endif
+ 
+ 
+diff --git a/cpp/src/materialproperties/orientation/raycasting/raycasting.cpp b/cpp/src/materialproperties/orientation/raycasting/raycasting.cpp
+index 96f2e77..53d0d79 100644
+--- a/cpp/src/materialproperties/orientation/raycasting/raycasting.cpp
++++ b/cpp/src/materialproperties/orientation/raycasting/raycasting.cpp
+@@ -1,5 +1,7 @@
+ #include "raycasting.h"
+ 
++#include <cmath>
++
+ 
+ ////// PARTICLE METHOD //////
+ 
+@@ -196,7 +198,8 @@ void RayCasting::assignWalkersDirection(){
+     std::vector<int> maxAngle(sphericalWalkers[0].size(),0);
+ 
+ #pragma omp parallel for
+-    for(unsigned int i=0;i<sphericalWalkers[0].size();i++) {
++    // The OpenMP 2.0 implementation in MSVC requires a signed index variable.
++    for(long i=0;i<(long)sphericalWalkers[0].size();i++) {
+         for(unsigned int j=0;j<sphericalWalkers[0].size();j++) {
+             double theta = acos(sphericalWalkers[0][i].dir.x * sphericalWalkers[0][j].dir.x + sphericalWalkers[0][i].dir.y * sphericalWalkers[0][j].dir.y + sphericalWalkers[0][i].dir.z * sphericalWalkers[0][j].dir.z) * (180./M_PI);
+             double phi = acos(sphericalWalkers[0][i].dir.x * (-sphericalWalkers[0][j].dir.x) + sphericalWalkers[0][i].dir.y * (-sphericalWalkers[0][j].dir.y) + sphericalWalkers[0][i].dir.z * (-sphericalWalkers[0][j].dir.z)) * (180./M_PI);
+@@ -426,10 +429,12 @@ std::vector<double> RayCasting::nextEdgeIntersection(int i, int ind){
+     tY = (nY-sphericalWalkers[ind][i].pos.y)/sphericalWalkers[ind][i].dir.y; // time to get to y wall
+     tZ = (nZ-sphericalWalkers[ind][i].pos.z)/sphericalWalkers[ind][i].dir.z; // time to get to z wall
+ 
+-    // For the cases in which the angle is exactly 0 (preventing Inf or Nan)
+-    if(tX != tX || tX  == +1.0/0.0 || tX  == -1.0/0.0) tX = 1e10;
+-    if(tY != tY || tY  == +1.0/0.0 || tY  == -1.0/0.0) tY = 1e10;
+-    if(tZ != tZ || tZ  == +1.0/0.0 || tZ  == -1.0/0.0) tZ = 1e10;
++    // For the cases in which the angle is exactly 0 (preventing Inf or Nan).
++    // A zero direction component divides to a NaN or to an infinity, and
++    // std::isfinite is false for both.
++    if(!std::isfinite(tX)) tX = 1e10;
++    if(!std::isfinite(tY)) tY = 1e10;
++    if(!std::isfinite(tZ)) tZ = 1e10;
+ 
+     // Step 3: Setting the next position of the sphericalWalker based on the nearest interface
+     if(tX<=tY && tX<=tZ){ // if the x wall is the closest
+diff --git a/cpp/src/utilities/logger/logger.h b/cpp/src/utilities/logger/logger.h
+index 4e0a12f..9e998cf 100644
+--- a/cpp/src/utilities/logger/logger.h
++++ b/cpp/src/utilities/logger/logger.h
+@@ -5,8 +5,13 @@
+ 
+ #include <cstring>
+ #include <ctime>
++#ifdef _MSC_VER
++#include <direct.h>
++#define GetCurrentDir _getcwd
++#else
+ #include <unistd.h>
+ #define GetCurrentDir getcwd
++#endif
+ 
+ 
+ namespace puma {
+diff --git a/cpp/src/utilities/primitives/pstring.h b/cpp/src/utilities/primitives/pstring.h
+index 3d2fdc5..e02503a 100644
+--- a/cpp/src/utilities/primitives/pstring.h
++++ b/cpp/src/utilities/primitives/pstring.h
+@@ -10,7 +10,11 @@
+ #include <cstdio>
+ #include <cstring>
+ #include <cerrno>
++#ifndef _MSC_VER
++// Nothing in this header calls into unistd; it is included for the
++// translation units that pick the declarations up transitively.
+ #include <unistd.h>
++#endif
+ 
+ 
+ namespace puma {
+diff --git a/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.cpp b/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.cpp
+index 1f0f395..b1b0a43 100644
+--- a/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.cpp
++++ b/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.cpp
+@@ -425,17 +425,16 @@ puma::Vec3<double> FV_AMatrix::computeFluxes(puma::Matrix<double> *x, char dir )
+ 
+     }
+ 
+-    // MAC
+     puma::Vec3<double> fluxes(0,0,0);
+ 
+-#ifdef MAC
+-    fluxes.x = accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
+-    fluxes.y = accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
+-    fluxes.z = accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
+-#elif LINUX
++#ifdef LINUX
+     fluxes.x = __gnu_parallel::accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
+     fluxes.y = __gnu_parallel::accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
+     fluxes.z = __gnu_parallel::accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
++#else
++    fluxes.x = std::accumulate(fluxVec_X.begin(), fluxVec_X.end(),0.0)/((X)*(Y)*(Z));
++    fluxes.y = std::accumulate(fluxVec_Y.begin(), fluxVec_Y.end(),0.0)/((X)*(Y)*(Z));
++    fluxes.z = std::accumulate(fluxVec_Z.begin(), fluxVec_Z.end(),0.0)/((X)*(Y)*(Z));
+ #endif
+ 
+     return fluxes;
+diff --git a/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.h b/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.h
+index 0ce4b7b..baa30ce 100644
+--- a/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.h
++++ b/cpp/src/utilities/solvers/fv_diffusion/fv_AMatrix.h
+@@ -5,10 +5,10 @@
+ #include "fv_boundarycondition.h"
+ #include "AMatrix.h"
+ 
+-#ifdef MAC
+-#include <numeric>
+-#elif LINUX
++#ifdef LINUX
+ #include <parallel/numeric>
++#else
++#include <numeric>
+ #endif
+ 
+ 
+diff --git a/cpp/src/utilities/timer/timer.cpp b/cpp/src/utilities/timer/timer.cpp
+index cdd0b37..e7bf228 100644
+--- a/cpp/src/utilities/timer/timer.cpp
++++ b/cpp/src/utilities/timer/timer.cpp
+@@ -8,20 +8,18 @@ puma::Timer::Timer()
+ }
+ 
+ 
++static double puma_now_ms(){
++    using namespace std::chrono;
++    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
++}
++
+ bool puma::Timer::reset(){
+-    struct timeval tim11;
+-    gettimeofday(&tim11, NULL);
+-    currentTime=(tim11.tv_sec + (tim11.tv_usec / 1000000.0)) * 1000.0;
++    currentTime = puma_now_ms();
+     return true;
+ }
+ 
+ double puma::Timer::elapsed(){
+-    struct timeval tim11;
+-    gettimeofday(&tim11, NULL);
+-    double newTime=(tim11.tv_sec + (tim11.tv_usec / 1000000.0)) * 1000.0;
+-
+-    return (newTime-currentTime)/1000.0;
+-
++    return (puma_now_ms() - currentTime) / 1000.0;
+ }
+ 
+ bool puma::Timer::start() {
+diff --git a/cpp/src/utilities/timer/timer.h b/cpp/src/utilities/timer/timer.h
+index ef66975..4af4c6d 100644
+--- a/cpp/src/utilities/timer/timer.h
++++ b/cpp/src/utilities/timer/timer.h
+@@ -1,7 +1,7 @@
+ #ifndef PUMATIMER_H
+ #define PUMATIMER_H
+ 
+-#include <sys/time.h>
++#include <chrono>
+ #include <ctime>
+ 
+ 
