@@ -1,0 +1,41 @@
+diff --git a/cpp/CMakeLists.txt b/cpp/CMakeLists.txt
+index d424d23..60bd142 100644
+--- a/cpp/CMakeLists.txt
++++ b/cpp/CMakeLists.txt
+@@ -8,12 +8,18 @@ set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+ set(CMAKE_MACOSX_RPATH TRUE)
+ 
++# Eigen 3.4 requires C++14 and Eigen 5 requires C++17, so the standard has to
++# be requested here rather than left to the compiler default.
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(CMAKE_CXX_EXTENSIONS OFF)
++
+ # set cxx flags
+ if(APPLE)
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Xpreprocessor -fopenmp --std=c++0x -Wno-format -Wno-literal-conversion -Wno-deprecated-register -Wno-return-type")
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Xpreprocessor -fopenmp -Wno-format -Wno-literal-conversion -Wno-register -Wno-return-type")
+     add_definitions(-DMAC) # preprocessor directive
+ elseif(UNIX)
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp --std=c++0x")
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp -Wno-register")
+     add_definitions(-DLINUX) # preprocessor directive
+ endif()
+ 
+diff --git a/gui/build/pumaGUI.pro b/gui/build/pumaGUI.pro
+index afcd582..7f23eef 100644
+--- a/gui/build/pumaGUI.pro
++++ b/gui/build/pumaGUI.pro
+@@ -18,7 +18,10 @@ unix:!macx {LIBS += -lgomp}
+ LIBS += -L$${INSTALL_PREFIX}/lib -lPuMA
+ 
+ QMAKE_RPATHDIR += $${INSTALL_PREFIX}/lib
+-QMAKE_CXXFLAGS += --std=c++0x
++
++# libPuMA and Eigen are built at C++17, and Qt 6 requires C++17 as well.
++# CONFIG carries the standard through to every compile qmake emits.
++CONFIG += c++17
+ 
+ 
+ SOURCES += \

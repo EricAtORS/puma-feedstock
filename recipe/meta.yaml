@@ -8,6 +8,14 @@ package:
 source:
   url: https://github.com/nasa/puma/archive/refs/tags/v{{ version }}.tar.gz
   sha256: 25308c057b36a7d394a58f3b16ede621ba739b5c504e51c069edc913f086ad7d
+  patches:
+    # Cython's numpy.pxd dropped int_t, so the three .pyx files that declare
+    # "ctypedef np.int_t DTYPE_t" no longer cythonize. intp_t is the indexing
+    # type these arrays actually hold.
+    - patches/numpy2-compatibility.patch
+    # PuMA asks for --std=c++0x, which is C++11. Eigen 3.4 needs C++14 and
+    # Eigen 5 needs C++17, so the library is compiled at C++17 instead.
+    - patches/cxx17-standard.patch
 
 build:
   number: 4
