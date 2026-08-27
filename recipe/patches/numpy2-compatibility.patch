@@ -1,0 +1,39 @@
+--- a/python/pumapy/physics_models/finite_volume/anisotropic_conductivity_utils.pyx
++++ b/python/pumapy/physics_models/finite_volume/anisotropic_conductivity_utils.pyx
+@@ -2,8 +2,8 @@
+ cimport numpy as np
+ 
+ np.import_array()
+-DTYPE = np.int_
+-ctypedef np.int_t DTYPE_t
++DTYPE = np.intp
++ctypedef np.intp_t DTYPE_t
+ 
+ 
+ def index_at_p(int index, int size):
+--- a/python/pumapy/physics_models/finite_volume/isotropic_conductivity_utils.pyx
++++ b/python/pumapy/physics_models/finite_volume/isotropic_conductivity_utils.pyx
+@@ -3,8 +3,8 @@
+ import sys
+ 
+ np.import_array()
+-DTYPE = np.int_
+-ctypedef np.int_t DTYPE_t
++DTYPE = np.intp
++ctypedef np.intp_t DTYPE_t
+ 
+ def index_at_p(int i, int j, int k, int len_x, int len_y, int len_z):
+     if i == -1:
+--- a/python/pumapy/physics_models/finite_volume/elasticity_utils.pyx
++++ b/python/pumapy/physics_models/finite_volume/elasticity_utils.pyx
+@@ -2,8 +2,8 @@
+ cimport numpy as np
+ 
+ np.import_array()
+-DTYPE = np.int_
+-ctypedef np.int_t DTYPE_t
++DTYPE = np.intp
++ctypedef np.intp_t DTYPE_t
+ 
+ 
+ def index_at_p_pad(int index, int size):
