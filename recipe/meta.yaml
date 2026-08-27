@@ -10,7 +10,7 @@ source:
   sha256: 25308c057b36a7d394a58f3b16ede621ba739b5c504e51c069edc913f086ad7d
 
 build:
-  number: 3
+  number: 4
 
 requirements:
   build:
@@ -40,10 +40,10 @@ requirements:
     - qt-main  # [not win]
   run:
     - python
-    - scipy =1.11
+    - scipy >=1.11,<2
     - scikit-image >=0.17
     - matplotlib-base
-    - pyvista >=0.40.0
+    - pyvista >=0.46.5
     - vtk
     - scikit-umfpack  # [not win]
     - ocl-icd-system  # [linux]
