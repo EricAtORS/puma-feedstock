@@ -23,10 +23,10 @@ source:
 
 outputs:
   - package:
-      name: puma
+      name: libpuma
     build:
       number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
-      script: build_puma
+      script: build_libpuma
     requirements:
       build:
         - if: build_platform != target_platform
@@ -90,17 +90,17 @@ outputs:
       license_file:
         - LICENSE.txt
         - install/TexGen/LICENSE.txt
-      summary: PuMA library and the pumapy python package.
+      summary: PuMA library and the pumapy python package, without the GUI.
 
   # The GUI is a separate qmake build that links against the libPuMA installed
-  # by the puma output, so puma is a host dependency rather than a shared build
-  # step. Qt therefore only ever reaches this output.
+  # by the libpuma output, so libpuma is a host dependency rather than a shared
+  # build step. Qt therefore only ever reaches this output.
   - package:
-      name: puma-gui
+      name: puma
     build:
       number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
       skip: win
-      script: build_gui
+      script: build_puma
     requirements:
       build:
         - if: unix and x86_64
@@ -118,7 +118,7 @@ outputs:
           then:
             - xorg-libxfixes
             - libgl-devel
-        - ${{ pin_subpackage('puma', exact=True) }}
+        - ${{ pin_subpackage('libpuma', exact=True) }}
         - eigen
         - fftw
         - libtiff
@@ -129,7 +129,7 @@ outputs:
             - qt6-main
             - qt6-3d
       run:
-        - ${{ pin_subpackage('puma', exact=True) }}
+        - ${{ pin_subpackage('libpuma', exact=True) }}
     tests:
       - script:
           # The test environment is headless, so Qt's default xcb plugin has no
