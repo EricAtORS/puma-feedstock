@@ -1,0 +1,208 @@
+schema_version: 1
+
+context:
+  name: puma
+  version: "3.2.2"
+  build: 4
+
+recipe:
+  name: ${{ name }}-split
+  version: ${{ version }}
+
+source:
+  url: https://github.com/nasa/puma/archive/refs/tags/v${{ version }}.tar.gz
+  sha256: 25308c057b36a7d394a58f3b16ede621ba739b5c504e51c069edc913f086ad7d
+  patches:
+    # Cython's numpy.pxd dropped int_t, so the three .pyx files that declare
+    # "ctypedef np.int_t DTYPE_t" no longer cythonize. intp_t is the indexing
+    # type these arrays actually hold.
+    - patches/numpy2-compatibility.patch
+    # PuMA asks for --std=c++0x, which is C++11. Eigen 3.4 needs C++14 and
+    # Eigen 5 needs C++17, so the library is compiled at C++17 instead.
+    - patches/cxx17-standard.patch
+
+outputs:
+  - package:
+      name: puma
+    build:
+      number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
+      script: build_puma
+    requirements:
+      build:
+        - if: build_platform != target_platform
+          then:
+            - python
+            - cross-python_${{ target_platform }}
+            - cython
+            - numpy
+        - if: unix and x86_64
+          then: x86_64-microarch-level ==${{ microarch_level }}
+        - ${{ compiler('c') }}
+        - ${{ stdlib('c') }}
+        - ${{ compiler('cxx') }}
+        - if: linux
+          then: libgomp
+        - if: osx
+          then: llvm-openmp
+        - if: not win
+          then:
+            - cmake <4
+            - make
+            - swig
+      host:
+        - python
+        - cython
+        - pip
+        - setuptools
+        - numpy
+        - if: not win
+          then:
+            - eigen
+            - fftw
+            - libtiff
+      run:
+        - python
+        - scipy >=1.11,<2
+        - scikit-image >=0.17
+        - matplotlib-base
+        - pyvista >=0.46.5
+        - vtk
+        - if: not win
+          then: scikit-umfpack
+        - if: linux
+          then: ocl-icd-system
+    tests:
+      - python:
+          imports:
+            - if: not win
+              then: TexGen.Core
+            - pumapy
+          pip_check: false
+      - script:
+          - if: not win
+            then: pumaX_testing 1
+          - cd python/test && python -m unittest test_workspace.TestWorkspace
+        files:
+          source:
+            - python/test/*.py
+    about:
+      license: NASA-1.3
+      license_file:
+        - LICENSE.txt
+        - install/TexGen/LICENSE.txt
+      summary: PuMA library and the pumapy python package.
+
+  # The GUI is a separate qmake build that links against the libPuMA installed
+  # by the puma output, so puma is a host dependency rather than a shared build
+  # step. Qt therefore only ever reaches this output.
+  - package:
+      name: puma-gui
+    build:
+      number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
+      skip: win
+      script: build_gui
+    requirements:
+      build:
+        - if: unix and x86_64
+          then: x86_64-microarch-level ==${{ microarch_level }}
+        - ${{ compiler('c') }}
+        - ${{ stdlib('c') }}
+        - ${{ compiler('cxx') }}
+        - if: linux
+          then: libgomp
+        - if: osx
+          then: llvm-openmp
+        - make
+      host:
+        - if: linux
+          then:
+            - xorg-libxfixes
+            - libgl-devel
+        - ${{ pin_subpackage('puma', exact=True) }}
+        - eigen
+        - fftw
+        - libtiff
+        - if: qt_major == "5"
+          then: qt-main
+        - if: qt_major == "6"
+          then:
+            - qt6-main
+            - qt6-3d
+      run:
+        - ${{ pin_subpackage('puma', exact=True) }}
+    tests:
+      - script:
+          # The test environment is headless, so Qt's default xcb plugin has no
+          # display to connect to; offscreen is conda-forge's documented
+          # substitute. pumaGUI ends in QApplication::exec() and never returns on
+          # its own, so timeout stops it and --preserve-status reports the
+          # resulting SIGTERM as 143.
+          - QT_QPA_PLATFORM=offscreen timeout --preserve-status 10 pumaGUI || [[ $? -eq 143 ]]
+        requirements:
+          run:
+            - coreutils
+    about:
+      # The GUI plots through the vendored QCustomPlot, which is GPL-3.0.
+      license: NASA-1.3 AND GPL-3.0-or-later
+      license_file:
+        - LICENSE.txt
+        - gui/src/Utilities/qcustomplot/GPL.txt
+      summary: Desktop GUI for PuMA.
+
+about:
+  homepage: https://github.com/nasa/puma
+  license: NASA-1.3
+  license_file:
+    - LICENSE.txt
+    - install/TexGen/LICENSE.txt
+    - gui/src/Utilities/qcustomplot/GPL.txt
+  summary: A package to compute material properties from micro-CT data.
+  description: |
+    The Porous Microstructure Analysis (PuMA) software has been developed to
+    compute effective material properties and perform material response simulations on
+    digitized microstructures of porous media. PuMA is able to import digital three-dimensional
+    images obtained from X-ray microtomography or to generate artificial microstructures
+    that mimic real materials. PuMA also provides a module for interactive 3D visualizations.
+    Version 3 includes modules to compute simple morphological properties such as porosity,
+    volume fractions, pore diameter, and specific surface area. Additional capabilities include
+    the determination of effective thermal and electrical conductivity (both radiative and solid conduction -
+    including the ability to simulate local anisotropy for the latter); effective diffusivity and
+    tortuosity from the continuum to the rarefied regime; techniques to determine the local material orientation,
+    as well as the mechanical properties (elasticity coefficient), and the permeability of a material.
+    Some examples of microstructures that have been run in the past are shown in the pictures below,
+    together with PuMA's software architecture schematic.
+    <p align="center">
+      <img src="https://github.com/nasa/puma/raw/main/doc/source/puma_description.png" width="100%"></img>
+    </p>
+
+    ### Citing PuMA
+    If you use PuMA in your research, please use the following BibTeX entries to cite it:
+
+    ```BibTeX
+    @article{puma2021,
+      title={Update 3.0 to "PuMA: The Porous Microstructure Analysis software",(PII: S2352711018300281)},
+      author={Ferguson, Joseph C and Semeraro, Federico and Thornton, John M and Panerai, Francesco and Borner, Arnaud and Mansour, Nagi N},
+      journal={SoftwareX},
+      volume={15},
+      pages={100775},
+      year={2021},
+      publisher={Elsevier}
+    }
+    @article{puma2018,
+      title={PuMA: The porous microstructure analysis software},
+      author={Ferguson, Joseph C and Panerai, Francesco and Borner, Arnaud and Mansour, Nagi N},
+      journal={SoftwareX},
+      volume={7},
+      pages={81--87},
+      year={2018},
+      publisher={Elsevier}
+    }
+    ```
+  documentation: https://puma-nasa.readthedocs.io/
+  repository: https://gitlab.com/jcfergus/puma-dev
+
+extra:
+  recipe-maintainers:
+    - fedesemeraro
+    - Tobias-Fischer
+    - joseph-ferguson

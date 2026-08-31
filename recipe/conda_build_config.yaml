@@ -3,11 +3,11 @@
 # worth the extra matrix entry. Level 4 is omitted because conda-forge CI agents
 # are not guaranteed to expose AVX-512, so its build could not be tested.
 microarch_level:
-  - 1
-  - 3  # [unix and x86_64]
+  - '1'
+  - '3'  # [unix and x86_64]
 
 # Which Qt the GUI links against. The vendored QCustomPlot is 2.0.0, which
 # predates Qt 6 support, so the GUI is built against Qt 5; adding 6 to this list
 # is what switches it once QCustomPlot is updated upstream.
 qt_major:
-  - 5
+  - '5'
