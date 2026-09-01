@@ -119,7 +119,7 @@ Home: https://github.com/nasa/puma
 
 Package license: NASA-1.3
 
-Summary: The pumapy python package, with the TexGen bindings.
+Summary: The pumapy python package.
 
 Development: https://gitlab.com/jcfergus/puma-dev
 

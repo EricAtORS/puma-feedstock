@@ -22,6 +22,9 @@ fftw:
 - '3'
 libtiff:
 - '4.7'
+license_family:
+- gpl
+- nasa
 llvm_openmp:
 - '21'
 macos_machine:
