@@ -1,12 +1,11 @@
 schema_version: 1
 
 context:
-  name: puma
   version: "3.2.2"
   build: 4
 
 recipe:
-  name: ${{ name }}-split
+  name: puma-split
   version: ${{ version }}
 
 source:
@@ -21,12 +20,51 @@ source:
     # Eigen 5 needs C++17, so the library is compiled at C++17 instead.
     - patches/cxx17-standard.patch
 
+build:
+  number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
+
 outputs:
+  # The C++ library on its own. It links fftw, libtiff and OpenMP and nothing
+  # else, so keeping python out of this output is what lets the GUI below build
+  # once per platform instead of once per python version.
   - package:
       name: libpuma
     build:
-      number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
+      # cpp/ is built with cmake, which this branch does not wire up for
+      # Windows.
+      skip: win
       script: build_libpuma
+    requirements:
+      build:
+        - if: unix and x86_64
+          then: x86_64-microarch-level ==${{ microarch_level }}
+        - ${{ compiler('c') }}
+        - ${{ stdlib('c') }}
+        - ${{ compiler('cxx') }}
+        - if: linux
+          then: libgomp
+        - if: osx
+          then: llvm-openmp
+        - cmake <4
+        - make
+      host:
+        - eigen
+        - fftw
+        - libtiff
+    tests:
+      - script:
+          - pumaX_testing 1
+    about:
+      license: NASA-1.3
+      license_file: LICENSE.txt
+      summary: PuMA C++ library.
+
+  # TexGen and pumapy are both pure python-facing builds that link nothing from
+  # libPuMA, so they travel together and carry the python variants on their own.
+  - package:
+      name: pumapy
+    build:
+      script: build_pumapy
     requirements:
       build:
         - if: build_platform != target_platform
@@ -40,10 +78,6 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ stdlib('c') }}
         - ${{ compiler('cxx') }}
-        - if: linux
-          then: libgomp
-        - if: osx
-          then: llvm-openmp
         - if: not win
           then:
             - cmake <4
@@ -55,11 +89,6 @@ outputs:
         - pip
         - setuptools
         - numpy
-        - if: not win
-          then:
-            - eigen
-            - fftw
-            - libtiff
       run:
         - python
         - scipy >=1.11,<2
@@ -74,13 +103,12 @@ outputs:
     tests:
       - python:
           imports:
+            # TexGen needs swig and cmake, so it is only built off Windows.
             - if: not win
               then: TexGen.Core
             - pumapy
           pip_check: false
       - script:
-          - if: not win
-            then: pumaX_testing 1
           - cd python/test && python -m unittest test_workspace.TestWorkspace
         files:
           source:
@@ -90,7 +118,7 @@ outputs:
       license_file:
         - LICENSE.txt
         - install/TexGen/LICENSE.txt
-      summary: PuMA library and the pumapy python package, without the GUI.
+      summary: The pumapy python package, with the TexGen bindings.
 
   # The GUI is a separate qmake build that links against the libPuMA installed
   # by the libpuma output, so libpuma is a host dependency rather than a shared
@@ -98,7 +126,6 @@ outputs:
   - package:
       name: puma
     build:
-      number: ${{ build + 100 * (microarch_level | default("1") | int - 1) }}
       skip: win
       script: build_puma
     requirements:
@@ -202,6 +229,9 @@ about:
   repository: https://gitlab.com/jcfergus/puma-dev
 
 extra:
+  # The recipe is named puma-split because it produces several packages, so the
+  # feedstock it belongs to has to be named explicitly.
+  feedstock-name: puma
   recipe-maintainers:
     - fedesemeraro
     - Tobias-Fischer
