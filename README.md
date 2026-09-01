@@ -1,17 +1,17 @@
-About libpuma-feedstock
-=======================
+About puma-feedstock
+====================
 
 Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/puma-feedstock/blob/main/LICENSE.txt)
 
 
-About libpuma
--------------
+About puma
+----------
 
 Home: https://github.com/nasa/puma
 
 Package license: NASA-1.3
 
-Summary: PuMA library and the pumapy python package, without the GUI.
+Summary: PuMA C++ library.
 
 Development: https://gitlab.com/jcfergus/puma-dev
 
@@ -112,6 +112,60 @@ If you use PuMA in your research, please use the following BibTeX entries to cit
 }
 ```
 
+About pumapy
+------------
+
+Home: https://github.com/nasa/puma
+
+Package license: NASA-1.3
+
+Summary: The pumapy python package, with the TexGen bindings.
+
+Development: https://gitlab.com/jcfergus/puma-dev
+
+Documentation: https://puma-nasa.readthedocs.io/
+
+The Porous Microstructure Analysis (PuMA) software has been developed to
+compute effective material properties and perform material response simulations on
+digitized microstructures of porous media. PuMA is able to import digital three-dimensional
+images obtained from X-ray microtomography or to generate artificial microstructures
+that mimic real materials. PuMA also provides a module for interactive 3D visualizations.
+Version 3 includes modules to compute simple morphological properties such as porosity,
+volume fractions, pore diameter, and specific surface area. Additional capabilities include
+the determination of effective thermal and electrical conductivity (both radiative and solid conduction -
+including the ability to simulate local anisotropy for the latter); effective diffusivity and
+tortuosity from the continuum to the rarefied regime; techniques to determine the local material orientation,
+as well as the mechanical properties (elasticity coefficient), and the permeability of a material.
+Some examples of microstructures that have been run in the past are shown in the pictures below,
+together with PuMA's software architecture schematic.
+<p align="center">
+  <img src="https://github.com/nasa/puma/raw/main/doc/source/puma_description.png" width="100%"></img>
+</p>
+
+### Citing PuMA
+If you use PuMA in your research, please use the following BibTeX entries to cite it:
+
+```BibTeX
+@article{puma2021,
+  title={Update 3.0 to "PuMA: The Porous Microstructure Analysis software",(PII: S2352711018300281)},
+  author={Ferguson, Joseph C and Semeraro, Federico and Thornton, John M and Panerai, Francesco and Borner, Arnaud and Mansour, Nagi N},
+  journal={SoftwareX},
+  volume={15},
+  pages={100775},
+  year={2021},
+  publisher={Elsevier}
+}
+@article{puma2018,
+  title={PuMA: The porous microstructure analysis software},
+  author={Ferguson, Joseph C and Panerai, Francesco and Borner, Arnaud and Mansour, Nagi N},
+  journal={SoftwareX},
+  volume={7},
+  pages={81--87},
+  year={2018},
+  publisher={Elsevier}
+}
+```
+
 Current build status
 ====================
 
@@ -165,11 +219,12 @@ Current release info
 | --- | --- | --- | --- |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-libpuma-green.svg)](https://anaconda.org/conda-forge/libpuma) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/libpuma.svg)](https://anaconda.org/conda-forge/libpuma) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/libpuma.svg)](https://anaconda.org/conda-forge/libpuma) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/libpuma.svg)](https://anaconda.org/conda-forge/libpuma) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-puma-green.svg)](https://anaconda.org/conda-forge/puma) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/puma.svg)](https://anaconda.org/conda-forge/puma) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/puma.svg)](https://anaconda.org/conda-forge/puma) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/puma.svg)](https://anaconda.org/conda-forge/puma) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-pumapy-green.svg)](https://anaconda.org/conda-forge/pumapy) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pumapy.svg)](https://anaconda.org/conda-forge/pumapy) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/pumapy.svg)](https://anaconda.org/conda-forge/pumapy) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/pumapy.svg)](https://anaconda.org/conda-forge/pumapy) |
 
-Installing libpuma
-==================
+Installing puma
+===============
 
-Installing `libpuma` from the `conda-forge` channel can be achieved by adding `conda-forge` to your channels with:
+Installing `puma` from the `conda-forge` channel can be achieved by adding `conda-forge` to your channels with:
 
 ```
 conda config --add channels conda-forge
@@ -183,7 +238,7 @@ How to use
 <summary>With conda</summary>
 
 ```
-conda install libpuma puma
+conda install libpuma puma pumapy
 ```
 
 </details>
@@ -192,7 +247,7 @@ conda install libpuma puma
 <summary>With mamba</summary>
 
 ```
-mamba install libpuma puma
+mamba install libpuma puma pumapy
 ```
 
 </details>
@@ -202,9 +257,9 @@ mamba install libpuma puma
 
 ```
 # for adding to your local project
-pixi add libpuma puma
+pixi add libpuma puma pumapy
 # for installing globally
-pixi global install libpuma puma
+pixi global install libpuma puma pumapy
 ```
 
 </details>
@@ -299,17 +354,17 @@ Terminology
                   produce the finished article (built conda distributions)
 
 
-Updating libpuma-feedstock
-==========================
+Updating puma-feedstock
+=======================
 
-If you would like to improve the libpuma recipe or build a new
+If you would like to improve the puma recipe or build a new
 package version, please fork this repository and submit a PR. Upon submission,
 your changes will be run on the appropriate platforms to give the reviewer an
 opportunity to confirm that the changes result in a successful build. Once
 merged, the recipe will be re-built and uploaded automatically to the
 `conda-forge` channel, whereupon the built conda packages will be available for
 everybody to install and use from the `conda-forge` channel.
-Note that all branches in the conda-forge/libpuma-feedstock are
+Note that all branches in the conda-forge/puma-feedstock are
 immediately built and any created packages are uploaded, so PRs should be based
 on branches in forks, and branches in the main repository should only be used to
 build distinct package versions.
