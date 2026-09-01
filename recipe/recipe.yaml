@@ -59,12 +59,28 @@ outputs:
       license_file: LICENSE.txt
       summary: PuMA C++ library.
 
-  # TexGen and pumapy are both pure python-facing builds that link nothing from
-  # libPuMA, so they travel together and carry the python variants on their own.
+  # pumapy links nothing from libPuMA, so it carries the python variants on its
+  # own. It is built once per license family: the gpl build bundles TexGen, the
+  # default build leaves it out. The build string names which one you have, the
+  # way ffmpeg distinguishes its gpl and lgpl builds.
   - package:
       name: pumapy
     build:
-      script: build_pumapy
+      # TexGen needs swig and cmake, neither of which this branch wires up for
+      # Windows, so only the permissive build exists there.
+      skip: win and license_family == "gpl"
+      # Resolution prefers the highest build number, so the permissive build is
+      # offset above the gpl one to make it the default; ffmpeg does the same in
+      # reverse to default to its gpl build. The offset has to clear the 100 per
+      # microarch level the top-level number already uses.
+      number: ${{ build + 100 * (microarch_level | default("1") | int - 1) + (1000 if license_family == "nasa" else 0) }}
+      string: ${{ license_family }}_${{ hash }}_${{ build_number }}
+      script:
+        file: build_pumapy
+        env:
+          # rattler-build does not scan build scripts for variant keys, so the
+          # family has to be handed to the script explicitly.
+          PUMA_LICENSE_FAMILY: ${{ license_family }}
     requirements:
       build:
         - if: build_platform != target_platform
@@ -78,7 +94,8 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ stdlib('c') }}
         - ${{ compiler('cxx') }}
-        - if: not win
+        # Only TexGen needs these, so the default build does without them.
+        - if: license_family == "gpl" and not win
           then:
             - cmake <4
             - make
@@ -103,8 +120,7 @@ outputs:
     tests:
       - python:
           imports:
-            # TexGen needs swig and cmake, so it is only built off Windows.
-            - if: not win
+            - if: license_family == "gpl"
               then: TexGen.Core
             - pumapy
           pip_check: false
@@ -114,11 +130,12 @@ outputs:
           source:
             - python/test/*.py
     about:
-      license: NASA-1.3
+      license: ${{ "NASA-1.3 AND GPL-2.0-or-later" if license_family == "gpl" else "NASA-1.3" }}
       license_file:
         - LICENSE.txt
-        - install/TexGen/LICENSE.txt
-      summary: The pumapy python package, with the TexGen bindings.
+        - if: license_family == "gpl"
+          then: install/TexGen/LICENSE.txt
+      summary: ${{ "The pumapy python package, with the GPL TexGen bindings." if license_family == "gpl" else "The pumapy python package." }}
 
   # The GUI is a separate qmake build that links against the libPuMA installed
   # by the libpuma output, so libpuma is a host dependency rather than a shared
