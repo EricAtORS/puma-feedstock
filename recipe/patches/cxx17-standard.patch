@@ -23,6 +23,43 @@ index d424d23..60bd142 100644
      add_definitions(-DLINUX) # preprocessor directive
  endif()
  
+diff --git a/cpp/src/export/STL/swapit.h b/cpp/src/export/STL/swapit.h
+index 81fe51f..b5f7e64 100644
+--- a/cpp/src/export/STL/swapit.h
++++ b/cpp/src/export/STL/swapit.h
+@@ -15,8 +15,8 @@ namespace p_bin {
+     const u_int16_t lobyte=(u_int16_t)0x00ff;
+     const u_int16_t hibyte=(u_int16_t)0xff00;
+     const u_int16_t bitsperbyte=(u_int16_t)8;
+-    register ssize_t i;
+-    register u_int16_t* src = reinterpret_cast<u_int16_t*>(buf);
++    ssize_t i;
++    u_int16_t* src = reinterpret_cast<u_int16_t*>(buf);
+ 
+ #pragma omp parallel for
+     for(i = 0 ; i < numWords ; ++i ){
+@@ -28,8 +28,8 @@ namespace p_bin {
+ 
+   // NO NUMTHREADS!!!
+   inline void swap32(void* buf, ssize_t numWords){
+-    register ssize_t i;
+-    register u_int32_t* src = reinterpret_cast<u_int32_t*>(buf);
++    ssize_t i;
++    u_int32_t* src = reinterpret_cast<u_int32_t*>(buf);
+ 
+ #pragma omp parallel for
+     for(i = 0 ; i < numWords ; ++i ){
+@@ -52,8 +52,8 @@ namespace p_bin {
+ 
+   // NO NUMTHREADS!!!
+   inline void swap64(void* buf, ssize_t numWords){
+-    register ssize_t i;
+-    register u_int64_t* src = reinterpret_cast<u_int64_t*>(buf);
++    ssize_t i;
++    u_int64_t* src = reinterpret_cast<u_int64_t*>(buf);
+ 
+ #pragma omp parallel for
+     for(i = 0 ; i < numWords ; ++i ){
 diff --git a/gui/build/pumaGUI.pro b/gui/build/pumaGUI.pro
 index afcd582..7f23eef 100644
 --- a/gui/build/pumaGUI.pro

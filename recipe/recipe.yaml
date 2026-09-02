@@ -17,7 +17,11 @@ source:
     # type these arrays actually hold.
     - patches/numpy2-compatibility.patch
     # PuMA asks for --std=c++0x, which is C++11. Eigen 3.4 needs C++14 and
-    # Eigen 5 needs C++17, so the library is compiled at C++17 instead.
+    # Eigen 5 needs C++17, so the library is compiled at C++17 instead. That
+    # also means swapit.h can no longer declare its locals "register", which
+    # C++17 removed: gcc only warns, but clang rejects it, and the header is
+    # installed into the prefix, so it broke the GUI build and would break any
+    # consumer compiling against libpuma.
     - patches/cxx17-standard.patch
 
 build:
